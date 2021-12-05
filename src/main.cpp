@@ -7,7 +7,10 @@
 static int const I2C_ADDRESS_A = 0x40;
 static int const I2C_ADDRESS_B = 0x41;
 static float const RSHUNT = 0.1;
-static const byte CAL_BUTTON_PIN = 6;
+
+static const byte CAL_BUTTON_PIN = 9;
+static const byte POWER_PIN = 8;
+static const byte BUZZER_PIN = 4;
 
 //aprox current is ~100mA
 static const int GAIN40_STATE = 40;   //1...400 mOhm
@@ -23,12 +26,18 @@ static const char PROGMEM GAIN320_RANGE[] = "1.6 - 3.2 ";
 static const char PROGMEM OVERFLOW_RANGE[] = "> 3.2 ";
 static const char PROGMEM OVERFLOW_MEASUREMENT[] = " ---";
 
+static const byte VOLTAGE_DIVIDER_MULTIPLIER = 3;
+static const float DIODE_VOLTAGE_DROP = 0.225; // unique to the specific 1N4736A
+static const float VREF_CALIBRATION = 0.11;    // unique to the specific arduino
+static const float BATTERY_LOW = 3.3;  
+
 //internal states
 static const int CALIBRATION_ERROR_STATE = -1;
 static const int CALIBRATION_STATE = 1;
 static const int CALIBRATION_SHORT_LEADS_PROMPT_STATE = 2;
 static const int CALIBRATION_SHORT_LEADS_STATE = 3;
 static const int READY_STATE = 4;
+static const int OFF_STATE = 5;
 
 INA219_WE ina219_A = INA219_WE(I2C_ADDRESS_A);
 INA219_WE ina219_B = INA219_WE(I2C_ADDRESS_B);
@@ -39,6 +48,7 @@ float offsetA_mV;
 float offsetB_mV;
 float offsetResistor;
 float resistor;
+float battery;
 
 int state = 0;
 int gainState = GAIN40_STATE;
@@ -46,8 +56,28 @@ byte coutDownCounter = 20;
 
 void continueCallibration();
 
+void displayBatteryVoltageScreen(const char *string){
+  char batteryBuffer[5];
+  snprintf(batteryBuffer, 5, "%.1f", (double)battery);
+  display.firstPage();
+  do
+  {
+    display.setDrawColor(1);
+    display.setFont(u8g2_font_logisoso34_tn);
+    display.drawStr(25, 50, batteryBuffer);
+    display.setFont(u8g2_font_10x20_mr);
+    display.drawStr(85, 50, "V");
+
+    display.setFont(u8g2_font_unifont_t_greek);
+    display.drawStr(0, 10, string);
+  } while (display.nextPage()); 
+}
+
 void displayShortLeadsPrompt()
 {
+  char batteryBuffer[5];
+  char buffer[4];
+  snprintf(batteryBuffer, 5, "%.1fV", (double)battery);
   display.firstPage();
   do
   {
@@ -56,9 +86,12 @@ void displayShortLeadsPrompt()
     display.drawStr(10, 32, "SHORT LEADS");
     display.setFont(u8g2_font_unifont_t_greek);
     display.drawStr(15, 50, "and press Cal.");
-    char buffer[4];
+
     sprintf(buffer, "...%d", coutDownCounter / 2);
     display.drawStr(97, 62, buffer);
+
+    display.setFont(u8g2_font_unifont_t_greek);
+    display.drawStr(90, 10, batteryBuffer);
   } while (display.nextPage());
 }
 
@@ -76,9 +109,9 @@ void directWrite(uint8_t pin, uint8_t x)
 
 void driveOff()
 {
+  directWrite(5, LOW);
+  directWrite(6, LOW);
   directWrite(7, LOW);
-  directWrite(8, LOW);
-  directWrite(9, LOW);
 
   directWrite(10, LOW);
   directWrite(11, LOW);
@@ -91,16 +124,17 @@ void driveP()
   directWrite(11, LOW);
   directWrite(12, LOW);
 
+  directWrite(5, HIGH);
+  directWrite(6, HIGH);
   directWrite(7, HIGH);
-  directWrite(8, HIGH);
-  directWrite(9, HIGH);
 }
 
 void driveN()
 {
+  directWrite(5, LOW);
+  directWrite(6, LOW);
   directWrite(7, LOW);
-  directWrite(8, LOW);
-  directWrite(9, LOW);
+
   directWrite(10, HIGH);
   directWrite(11, HIGH);
   directWrite(12, HIGH);
@@ -276,6 +310,7 @@ void drawScreen()
 
 void startCallibration()
 {
+  Serial.println("startCallibration");
   state = CALIBRATION_STATE;
   drawScreen();
   driveOff();
@@ -284,6 +319,17 @@ void startCallibration()
   offsetA_mV = measure_mV(ina219_A, 0, 64);
   offsetB_mV = measure_mV(ina219_B, 0, 64);
   continueCallibration();
+}
+
+void calButtonLongPressed()
+{
+  Serial.println("calButtonLongPressed");
+  digitalWrite(POWER_PIN, LOW);
+  tone(BUZZER_PIN, 1000, 125);
+  delay(250);
+  tone(BUZZER_PIN, 1000, 125);
+  display.clear();
+  state = OFF_STATE;
 }
 
 float measureResistor(int numLoops, float offset)
@@ -332,14 +378,34 @@ void continueCallibration()
   }
 }
 
+void readPowerSupplyVoltage()
+{
+  int sensorValue = analogRead(A0);
+  Serial.print(sensorValue);
+  float correctedValue = (sensorValue + 0.5) * 5.0 / 1024.0 + VREF_CALIBRATION; // true voltage on A0
+  Serial.print("------------------->");
+  Serial.println(correctedValue);
+  battery = correctedValue;
+}
+
 void setup()
 {
+  //power pin
+  pinMode(POWER_PIN, OUTPUT);
+  digitalWrite(POWER_PIN, HIGH);
+
+  //buzzer pin
+  pinMode(BUZZER_PIN, OUTPUT);
+  tone(BUZZER_PIN, 1000, 125);
+
   Serial.begin(9600);
   while (!Serial)
     delay(10);
 
   Serial.println("Setup");
+  calButton.begin();
   calButton.onPressed(startCallibration);
+  calButton.onPressedFor(1500, calButtonLongPressed);
 
   if (!ina219_A.init())
   {
@@ -363,20 +429,44 @@ void setup()
   ina219_B.setBusRange(BRNG_16);
   ina219_B.setShuntSizeInOhms(RSHUNT);
 
+  // current pins
+  pinMode(5, OUTPUT);
   pinMode(6, OUTPUT);
   pinMode(7, OUTPUT);
-  pinMode(8, OUTPUT);
-  pinMode(9, OUTPUT);
+
   pinMode(10, OUTPUT);
   pinMode(11, OUTPUT);
   pinMode(12, OUTPUT);
+
+  //voltage sense pin
+  pinMode(A0, INPUT);
+
+  readPowerSupplyVoltage();
+  if (battery > BATTERY_LOW)
+  {
+    displayBatteryVoltageScreen("Battery");
+    delay(1000);
+  }
+  else
+  {
+    displayBatteryVoltageScreen("Battery LOW");
+    tone(BUZZER_PIN, 1000, 250);
+    delay(500);
+    tone(BUZZER_PIN, 1000, 250);
+    delay(500);
+    tone(BUZZER_PIN, 1000, 250);
+    delay(3000);
+  }
+
 
   startCallibration();
 }
 
 void loop()
 {
-  drawScreen();
+  calButton.read();
+  if (state != OFF_STATE)
+    drawScreen();
   if (state == CALIBRATION_SHORT_LEADS_PROMPT_STATE)
   {
     coutDownCounter--;
