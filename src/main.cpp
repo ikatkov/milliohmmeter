@@ -29,7 +29,9 @@ static const char PROGMEM OVERFLOW_MEASUREMENT[] = " ---";
 static const byte VOLTAGE_DIVIDER_MULTIPLIER = 3;
 static const float DIODE_VOLTAGE_DROP = 0.225; // unique to the specific 1N4736A
 static const float VREF_CALIBRATION = 0.11;    // unique to the specific arduino
-static const float BATTERY_LOW = 3.3;  
+static const float BATTERY_LOW = 3.3;
+static const long MAX_UPTIME = 4 * 60 * 1000; //4min
+static const long MAX_UPTIME_WARN = 3 * 60 * 1000 + 45 * 1000; //3:45min
 
 //internal states
 static const int CALIBRATION_ERROR_STATE = -1;
@@ -37,7 +39,8 @@ static const int CALIBRATION_STATE = 1;
 static const int CALIBRATION_SHORT_LEADS_PROMPT_STATE = 2;
 static const int CALIBRATION_SHORT_LEADS_STATE = 3;
 static const int READY_STATE = 4;
-static const int OFF_STATE = 5;
+static const int PRE_OFF_STATE = 5;
+static const int OFF_STATE = 6;
 
 INA219_WE ina219_A = INA219_WE(I2C_ADDRESS_A);
 INA219_WE ina219_B = INA219_WE(I2C_ADDRESS_B);
@@ -49,6 +52,7 @@ float offsetB_mV;
 float offsetResistor;
 float resistor;
 float battery;
+long uptime;
 
 int state = 0;
 int gainState = GAIN40_STATE;
@@ -56,7 +60,8 @@ byte coutDownCounter = 20;
 
 void continueCallibration();
 
-void displayBatteryVoltageScreen(const char *string){
+void displayBatteryVoltageScreen(const char *string)
+{
   char batteryBuffer[5];
   snprintf(batteryBuffer, 5, "%.1f", (double)battery);
   display.firstPage();
@@ -70,14 +75,12 @@ void displayBatteryVoltageScreen(const char *string){
 
     display.setFont(u8g2_font_unifont_t_greek);
     display.drawStr(0, 10, string);
-  } while (display.nextPage()); 
+  } while (display.nextPage());
 }
 
 void displayShortLeadsPrompt()
 {
-  char batteryBuffer[5];
   char buffer[4];
-  snprintf(batteryBuffer, 5, "%.1fV", (double)battery);
   display.firstPage();
   do
   {
@@ -89,9 +92,6 @@ void displayShortLeadsPrompt()
 
     sprintf(buffer, "...%d", coutDownCounter / 2);
     display.drawStr(97, 62, buffer);
-
-    display.setFont(u8g2_font_unifont_t_greek);
-    display.drawStr(90, 10, batteryBuffer);
   } while (display.nextPage());
 }
 
@@ -291,6 +291,16 @@ void displayAll()
   Serial.println(" Ohm");
 }
 
+void displayCalibrationPrompt()
+{
+  display.firstPage();
+  do
+  {
+    display.setFont(u8g2_font_unifont_t_greek);
+    display.drawStr(0, 10, "Callibrating...");
+  } while (display.nextPage());
+}
+
 void drawScreen()
 {
   switch (state)
@@ -305,12 +315,19 @@ void drawScreen()
     displayAll();
     break;
   }
+  case CALIBRATION_STATE:
+  {
+    displayCalibrationPrompt();
+    break;
+  }
   }
 }
 
 void startCallibration()
 {
   Serial.println("startCallibration");
+  tone(BUZZER_PIN, 1000, 100);
+  uptime = millis();
   state = CALIBRATION_STATE;
   drawScreen();
   driveOff();
@@ -458,13 +475,26 @@ void setup()
     delay(3000);
   }
 
-
   startCallibration();
 }
 
 void loop()
 {
   calButton.read();
+  if (millis() - uptime > MAX_UPTIME_WARN && state != PRE_OFF_STATE)
+  {
+    tone(BUZZER_PIN, 1000, 500);
+    delay(500);
+    tone(BUZZER_PIN, 1000, 500);
+    state = PRE_OFF_STATE;
+  }
+  else if (millis() - uptime > MAX_UPTIME)
+  {
+    tone(BUZZER_PIN, 1000, 1000);
+    delay(1000);
+    calButtonLongPressed();
+  }
+
   if (state != OFF_STATE)
     drawScreen();
   if (state == CALIBRATION_SHORT_LEADS_PROMPT_STATE)
