@@ -18,7 +18,7 @@ L Transistor_FET:Si4532DY Q1
 U 2 1 61AC9576
 P 4500 2550
 F 0 "Q1" H 4705 2596 50  0000 L CNN
-F 1 "Si4532DY" H 4705 2505 50  0000 L CNN
+F 1 "Si9942DY" H 4705 2505 50  0000 L CNN
 F 2 "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm" H 4700 2475 50  0001 L CNN
 F 3 "https://www.onsemi.com/pub/Collateral/SI4532DY-D.PDF" H 4600 2550 50  0001 L CNN
 	2    4500 2550
@@ -29,7 +29,7 @@ L Transistor_FET:Si4532DY Q1
 U 1 1 61ACD011
 P 3950 3200
 F 0 "Q1" H 4155 3246 50  0000 L CNN
-F 1 "Si4532DY" H 4155 3155 50  0000 L CNN
+F 1 "Si9942DY" H 4155 3155 50  0000 L CNN
 F 2 "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm" H 4150 3125 50  0001 L CNN
 F 3 "https://www.onsemi.com/pub/Collateral/SI4532DY-D.PDF" H 4050 3200 50  0001 L CNN
 	1    3950 3200
@@ -120,4 +120,20 @@ Wire Wire Line
 Connection ~ 4050 3500
 Wire Wire Line
 	4050 3500 4050 3700
+Text Label 4650 2050 0    50   ~ 10
+4.11V
+Text Label 4050 3000 0    50   ~ 10
+3.68V
+Text Label 3550 3150 0    50   ~ 10
+0V
+Text Label 4100 3500 0    50   ~ 10
+0V
+Text Notes 4650 2400 0    50   ~ 0
+source
+Text Notes 4650 2750 0    50   ~ 0
+drain\n
+Text Notes 4100 3100 0    50   ~ 0
+drain\n
+Text Notes 4100 3350 0    50   ~ 0
+source
 $EndSCHEMATC

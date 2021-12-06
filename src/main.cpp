@@ -30,8 +30,8 @@ static const byte VOLTAGE_DIVIDER_MULTIPLIER = 3;
 static const float DIODE_VOLTAGE_DROP = 0.225; // unique to the specific 1N4736A
 static const float VREF_CALIBRATION = 0.11;    // unique to the specific arduino
 static const float BATTERY_LOW = 3.3;
-static const long MAX_UPTIME = 4 * 60 * 1000; //4min
-static const long MAX_UPTIME_WARN = 3 * 60 * 1000 + 45 * 1000; //3:45min
+static const unsigned long MAX_UPTIME = 240000; //4min
+static const unsigned long MAX_UPTIME_WARN = 225000; //3:45min
 
 //internal states
 static const int CALIBRATION_ERROR_STATE = -1;
@@ -398,10 +398,7 @@ void continueCallibration()
 void readPowerSupplyVoltage()
 {
   int sensorValue = analogRead(A0);
-  Serial.print(sensorValue);
   float correctedValue = (sensorValue + 0.5) * 5.0 / 1024.0 + VREF_CALIBRATION; // true voltage on A0
-  Serial.print("------------------->");
-  Serial.println(correctedValue);
   battery = correctedValue;
 }
 
@@ -483,6 +480,7 @@ void loop()
   calButton.read();
   if (millis() - uptime > MAX_UPTIME_WARN && state != PRE_OFF_STATE)
   {
+    Serial.println("MAX_UPTIME_WARN");
     tone(BUZZER_PIN, 1000, 500);
     delay(500);
     tone(BUZZER_PIN, 1000, 500);
@@ -490,6 +488,7 @@ void loop()
   }
   else if (millis() - uptime > MAX_UPTIME)
   {
+    Serial.println("MAX_UPTIME");
     tone(BUZZER_PIN, 1000, 1000);
     delay(1000);
     calButtonLongPressed();
